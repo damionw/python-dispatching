@@ -10,8 +10,12 @@ implementations of the same function with the same name can exist
 within the same namespace, differentiated only by the number of
 parameters and their types.
 
+This implementation also allows parameter values to be used as
+differentiating characteristics, a la Erlang function parameter
+pattern matching.
+
 When the function name is invoked, an appropriate instance is
-selected according to how it is being called.
+selected according to its parameter signature.
 
 #### Why is this useful ?
 Glad you asked.
