@@ -123,3 +123,10 @@ class TestBasicDispatching(TestCase):
             "what",
         )
 
+        self.assertRaises(
+            NotImplementedError,
+            testit,
+            "what",
+            None
+        )
+
