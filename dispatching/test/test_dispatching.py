@@ -99,3 +99,27 @@ class TestBasicDispatching(TestCase):
             return True
 
         self.assertTrue(testit())
+
+    def test_partial_prototype_matching(self):
+        @prototype(value=int)
+        def testit(value):
+            return 1
+
+        @prototype(value=int, allow_partial_match=True)
+        def testit(value, extra):
+            return 2
+
+        @prototype(value=str, allow_partial_match=False)
+        def testit(value, extra):
+            return 3
+
+        self.assertEquals(testit(1), 1)
+        self.assertEquals(testit(1, 7), 2)
+        self.assertEquals(testit(1, "whatever"), 2)
+
+        self.assertRaises(
+            NotImplementedError,
+            testit,
+            "what",
+        )
+

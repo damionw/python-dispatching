@@ -1,5 +1,9 @@
 #! /usr/bin/env python
 
+import sys, os
+
+sys.path[0:0] = filter(len, os.environ.get("PYTHONPATH", "").split(":"))
+
 from dispatching import prototype
 
 @prototype(value=(int, 0))

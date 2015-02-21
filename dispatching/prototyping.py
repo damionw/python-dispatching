@@ -7,7 +7,8 @@ class prototype(object):
     _registry_collection = {}
 
     def __init__(self, **prototype):
-        self._prototype = prototype
+        self._prototype = dict(prototype)
+        self._allow_partial_match = self._prototype.pop('allow_partial_match', False)
 
     @classmethod
     def format_specification_elements(cls, prototype):
@@ -67,16 +68,22 @@ class prototype(object):
                 getargspec(fn),
                 dict(self.get_type_spec(self._prototype)),
                 dict(self.get_value_spec(self._prototype)),
+                self._allow_partial_match,
             )
         )
 
         return wraps(fn)(
-            lambda *args, **kwargs: self.handler(function_key, registry, args, kwargs)
+            lambda *args, **kwargs: self.handler(
+                function_key,
+                registry,
+                args,
+                kwargs,
+            )
         )
 
     @staticmethod
     def handler(function_key, registry, args, kwargs):
-        for fn, spec, _prototype, _permissible_values in registry[function_key]:
+        for fn, spec, _prototype, _permissible_values, allow_partial_match in registry[function_key]:
             parameter_names = spec.args
 
             # Capture the parameters and their defaults
@@ -88,17 +95,16 @@ class prototype(object):
             )
 
             # Merge in the positional parameter values
-            instance_parameters.update(
-                izip(
-                    parameter_names,
-                    args,
-                )
-            )
+            keyed_positional_args = zip(parameter_names, args)
+            instance_parameters.update(keyed_positional_args)
 
             # Add in the keyword argument values
             instance_parameters.update(kwargs)
 
-            if len(instance_parameters) < len(args):
+            if allow_partial_match:
+                # Elide the consumed positional args
+                remaining_positional_args = args[max(map(len, [keyed_positional_args, args])):]
+            elif len(instance_parameters) < len(args):
                 continue
             elif set(kwargs.keys()).difference(instance_parameters.keys()):
                 continue
@@ -110,8 +116,41 @@ class prototype(object):
                 in instance_parameters.iteritems()
             }
 
-            # Not a candidate if the type signatures don't match
-            if _prototype != instance_prototype:
+            # Update with extra parameters if we're allowing partial matches
+            if allow_partial_match:
+                # Get unconsumed prototype arguments
+                extra_keys = filter(
+                    lambda _x: _x not in instance_parameters.keys(),
+                    parameter_names,
+                )
+
+                # Get unconsumed positional arguments
+                extra_args = OrderedDict(
+                    ((_key, _value) for _key, _value in izip(extra_keys, remaining_positional_args))
+                )
+
+                # No match if all the function's parameters aren't satisfied
+                supplied_keys = set(extra_args.keys() + instance_parameters.keys())
+
+                # Not a candidate if there's a parameter mismatch
+                if supplied_keys.symmetric_difference(parameter_names):
+                    continue
+
+                trimmed_instance_prototype = dict(
+                    (_key, _value)
+                    for _key, _value
+                    in instance_prototype.iteritems()
+                    if _key in _prototype
+                )
+
+                # Type match on the partial prototype
+                if _prototype != trimmed_instance_prototype:
+                    continue
+            # Not a candidate if the type signatures don't match exactly
+            elif _prototype != instance_prototype:
+                continue
+            # Also not a candidate if the call has supplied unexpected parameters
+            elif set(parameter_names).difference(instance_prototype.keys()):
                 continue
 
             # Check the values for permissibility
@@ -128,6 +167,17 @@ class prototype(object):
                 # Found non permissible value
                 break
             else:
+                # Fill in the extra parameters for partial matches
+                if allow_partial_match:
+                    instance_parameters.update(extra_args)
+
+                    instance_parameters.update(
+                        (_key, _value)
+                        for _key, _value
+                        in kwargs.iteritems()
+                        if _key not in instance_parameters
+                    )
+
                 # All values were found to be permissible, so call the function
                 return fn(**instance_parameters)
 
